@@ -15,14 +15,15 @@ typedef struct s_player
 {
     float x;
     float y;
-    float dir;
+    float radius;
+    float turn_dir;
+    float walk_dir;
+    float rotation_angle;
+    float moves_speed;
+    float rotation_speed;
+
 } t_player;
 
-typedef struct s_ray
-{
-    float angle;
-    float distance;
-} t_ray;
 
 typedef struct s_data
 {
@@ -30,6 +31,7 @@ typedef struct s_data
     void *win;
     void *img;
     char *addr;
+    int update_needed;
     int bits_per_pixel;
     int line_length;
     int endian;
@@ -37,7 +39,6 @@ typedef struct s_data
     int height;
     char **map;
     t_player player;
-    t_ray rays[NUM_RAYS];
 } t_data;
 
 // Function prototypes
