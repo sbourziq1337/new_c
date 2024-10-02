@@ -15,6 +15,7 @@ typedef struct s_player
 {
     float x;
     float y;
+    int block_size;
     float radius;
     float turn_dir;
     float walk_dir;
