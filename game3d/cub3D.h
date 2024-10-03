@@ -9,7 +9,6 @@
 #include <string.h>
 #define PI 3.1415926535
 #define FOV 60
-#define NUM_RAYS 320
 
 typedef struct s_player
 {

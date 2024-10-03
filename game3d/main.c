@@ -47,7 +47,6 @@ int is_position_invalid(t_data *data, float x, float y)
 }
 void update_game(t_data *data)
 {
-   // printf("my data is %2.f and y = %2.f\n", data->player.x, data->player);
     if (data->update_needed)
     {
         // Calculate potential new position
@@ -114,15 +113,76 @@ int key_release(int keycode, t_data *data)
 }
 void draw_line(t_data *data, int center_x, int center_y, double length, int color)
 {
-    double dx = cos(data->player.rotation_angle) * length;
-    double dy = sin(data->player.rotation_angle) * length;
+    double dx = 0;
+    double dy = 0;
+    double test_x = 0;
+    double test_y = 0;
 
+    if(data->player.rotation_angle >= 0 && data->player.rotation_angle <= PI)
+        test_y = (floor(center_y / 50 + 1) * 50) - center_y;
+    else
+        test_y = (floor(center_y / 50) * 50) - center_y;
+    test_x = (test_y) / tan(data->player.rotation_angle);
+    printf("my x = %2.f and y = %2.f\n",test_x, test_y);
+    while(1)
+    {
+        dx = cos(data->player.rotation_angle) * length;
+        dy = sin(data->player.rotation_angle) * length;
+        if(data->map[(int)(center_y + dy) / 50][(int)(center_x + dx )/ 50] == '1')
+            break;
+        length += 0.5;
+    }
     for (double i = 0; i <= length; i++)
     {
         double x = center_x + (double)(dx * i / length);
         double y = center_y + (double)(dy * i / length);
         my_mlx_pixel_put(data, x, y, color);
     }
+
+
+//    for (int i = 0; i <= (FOV / 2); i++)
+// 	{
+// 		length = 0.5;
+// 		while (1)
+// 		{
+// 			test_x = cos(data->player.rotation_angle + (FOV / 2 - i) * (PI / 180))
+// 				* length;
+// 			test_y = sin(data->player.rotation_angle + (FOV / 2 - i) * (PI / 180))
+// 				* length;
+// 			if (data->map[(int)(center_y + test_y) / 50][(int)(center_x + test_x)
+// 				/ 50] == '1')
+// 				break ;
+// 			length += 0.5;
+// 			// printf("my data is %2.f\n", length);
+// 		}
+// 		for (double i = 0; i <= length; i++)
+// 		{
+// 			double x = center_x + (double)(test_x * i / length);
+// 			double y = center_y + (double)(test_y * i / length);
+// 			my_mlx_pixel_put(data, x, y, color);
+// 		}
+// 	}
+//   for (int i = 0; i <= (FOV / 2); i++)
+// 	{
+// 		length = 0.5;
+// 		while (1)
+// 		{
+// 			test_x = cos(data->player.rotation_angle - (FOV / 2 - i) * (PI / 180))
+// 				* length;
+// 			test_y = sin(data->player.rotation_angle - (FOV / 2 - i) * (PI / 180))
+// 				* length;
+// 			if (data->map[(int)(center_y + test_y) / 50][(int)(center_x + test_x)
+// 				/ 50] == '1')
+// 				break ;
+// 			length += 0.5;
+// 		}
+// 		for (double i = 0; i <= length; i++)
+// 		{
+// 			double x = center_x + (double)(test_x * i / length);
+// 			double y = center_y + (double)(test_y * i / length);
+// 			my_mlx_pixel_put(data, x, y, color);
+// 		}
+// 	}
 }
 void draw_circle(t_data *data, int center_x, int center_y, int radius, int color)
 {
@@ -170,7 +230,7 @@ int render_frame(t_data *data)
     int player_x = data->player.x * data->player.block_size + data->player.block_size / 2;
     int player_y = data->player.y * data->player.block_size + data->player.block_size / 2;
     draw_circle(data, player_x, player_y, data->player.radius, 0x0000FF00);
-    draw_line(data, player_x, player_y, 40, 0x0000FF00);
+    draw_line(data, player_x, player_y, 0.5, 0x0000FF00);
     mlx_put_image_to_window(data->mlx, data->win, data->img, 0, 0);
     return (0);
 }
@@ -200,7 +260,7 @@ int main(void)
     data.player.walk_dir = 0;
     data.player.rotation_angle = PI / 2;
     data.player.moves_speed = 0.15;
-    data.player.rotation_speed = 8 * (PI / 180);
+    data.player.rotation_speed = 3 * (PI / 180);
     data.update_needed = 0;
 
     // Initialize MLX
