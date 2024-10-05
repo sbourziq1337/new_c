@@ -3,7 +3,9 @@
 void init_image(t_data *data)
 {
     int bpp, size_line, endian;
-    data->img = mlx_new_image(data->mlx, data->width * data->player.block_size, data->height * data->player.block_size);
+    // Double the height for split screen
+    data->img = mlx_new_image(data->mlx, data->width * data->player.block_size * 2, 
+                              data->height * data->player.block_size * 2);
     data->addr = mlx_get_data_addr(data->img, &bpp, &size_line, &endian);
     data->bits_per_pixel = bpp;
     data->line_length = size_line;
@@ -220,46 +222,152 @@ void draw_circle(t_data *data, int center_x, int center_y, int radius, int color
         }
     }
 }
+void draw_3d_walls(t_data *data)
+{
+    int screen_height = data->height * data->player.block_size;
+    int screen_width = data->width * data->player.block_size;
+    
+    for (int x = 0; x < screen_width; x++)
+    {
+        // Calculate ray angle
+        double ray_angle = data->player.rotation_angle - (FOV / 2) * (PI / 180) + 
+                   (x * FOV * (PI / 180)) / screen_width;
+        
+        // Normalize angle
+        if (ray_angle < 0) ray_angle += 2 * PI;
+        if (ray_angle > 2 * PI) ray_angle -= 2 * PI;
+
+        // Ray casting variables
+        double rayDirX = cos(ray_angle);
+        double rayDirY = sin(ray_angle);
+        
+        int mapX = (int)data->player.x;
+        int mapY = (int)data->player.y;
+        
+        double deltaDistX = fabs(1 / rayDirX);
+        double deltaDistY = fabs(1 / rayDirY);
+        
+        int stepX = (rayDirX < 0) ? -1 : 1;
+        int stepY = (rayDirY < 0) ? -1 : 1;
+        
+        double sideDistX = (rayDirX < 0) ? 
+            (data->player.x - mapX) * deltaDistX : 
+            (mapX + 1.0 - data->player.x) * deltaDistX;
+        double sideDistY = (rayDirY < 0) ? 
+            (data->player.y - mapY) * deltaDistY : 
+            (mapY + 1.0 - data->player.y) * deltaDistY;
+        
+        // DDA algorithm
+        int hit = 0, side;
+        while (hit == 0)
+        {
+            if (sideDistX < sideDistY)
+            {
+                sideDistX += deltaDistX;
+                mapX += stepX;
+                side = 0;
+            }
+            else
+            {
+                sideDistY += deltaDistY;
+                mapY += stepY;
+                side = 1;
+            }
+            
+            if (mapX < 0 || mapY < 0 || mapX >= data->width || mapY >= data->height)
+                break;
+            if (data->map[mapY][mapX] == '1')
+                hit = 1;
+        }
+        
+        // Calculate wall height
+        double perpWallDist;
+        if (side == 0)
+            perpWallDist = (mapX - data->player.x + (1 - stepX) / 2) / rayDirX;
+        else
+            perpWallDist = (mapY - data->player.y + (1 - stepY) / 2) / rayDirY;
+        
+        int lineHeight = (int)(screen_height / perpWallDist);
+        
+        // Calculate drawing bounds
+        int drawStart = -lineHeight / 2 + screen_height / 2;
+        if (drawStart < 0) drawStart = 0;
+        int drawEnd = lineHeight / 2 + screen_height / 2;
+        if (drawEnd >= screen_height) drawEnd = screen_height - 1;
+        
+        // Draw the walls
+        int color = (side == 1) ? 0x00AA0000 : 0x00FF0000; // Darker color for y-side
+        for (int y = drawStart; y < drawEnd; y++)
+        {
+            my_mlx_pixel_put(data, x, y, color);
+        }
+        
+        // Draw ceiling
+        for (int y = 0; y < drawStart; y++)
+        {
+            my_mlx_pixel_put(data, x, y, 0x00444444);
+        }
+        
+        // Draw floor
+        for (int y = drawEnd; y < screen_height; y++)
+        {
+            my_mlx_pixel_put(data, x, y, 0x00222222);
+        }
+    }
+}
 int render_frame(t_data *data)
 {
     int color;
-
-    //clear image
+    
+    // Clear the image first
     memset(data->addr, 0, data->line_length * data->height * data->player.block_size );
 
+    // Draw 3D walls in the top half
+    draw_3d_walls(data);
+
+    // Draw 2D map in the bottom half
+    int map_start_y = data->height * data->player.block_size ; // Start of 2D map
     for (int y = 0; y < data->height; y++)
     {
         for (int x = 0; x < data->width; x++)
         {
-                if (data->map[y][x] == '1')
-                    color = 0x00FF0000; // Red for walls
-                else
-                    color = 0x00000000; // Black for empty space
+            if (data->map[y][x] == '1')
+                color = 0x00FF0000; // Red for walls
+            else
+                color = 0x00000000; // Black for empty space
 
-                // Fill the block
-                for (int i = 0; i < data->player.block_size; i++)
-                {
-                    for (int j = 0; j < data->player.block_size; j++)
-                    {
-                        my_mlx_pixel_put(data, x * data->player.block_size + j, y * data->player.block_size + i, color);
-                    }
-                }
+            // Fill the block
             for (int i = 0; i < data->player.block_size; i++)
             {
-                my_mlx_pixel_put(data, (x + 1) * data->player.block_size - 1, y * data->player.block_size + i, 0x00FFFFFF);
-                my_mlx_pixel_put(data, x * data->player.block_size + i, (y + 1) * data->player.block_size - 1, 0x00FFFFFF);
+                for (int j = 0; j < data->player.block_size; j++)
+                {
+                    my_mlx_pixel_put(data, x * data->player.block_size + j, 
+                                    map_start_y + y * data->player.block_size + i, color);
+                }
+            }
+            
+            // Draw grid lines
+            for (int i = 0; i < data->player.block_size; i++)
+            {
+                my_mlx_pixel_put(data, (x + 1) * data->player.block_size - 1, 
+                                map_start_y + y * data->player.block_size + i, 0x00FFFFFF);
+                my_mlx_pixel_put(data, x * data->player.block_size + i, 
+                                map_start_y + (y + 1) * data->player.block_size - 1, 0x00FFFFFF);
             }
         }
     }
 
-    // Draw player (assuming player coordinates are in map units, not pixels)
+    // Draw player on 2D map
     int player_x = data->player.x * data->player.block_size + data->player.block_size / 2;
-    int player_y = data->player.y * data->player.block_size + data->player.block_size / 2;
+    int player_y = map_start_y + data->player.y * data->player.block_size + data->player.block_size / 2;
     draw_circle(data, player_x, player_y, data->player.radius, 0x0000FF00);
-    draw_line(data, player_x, player_y, 0x0000FF00,0);
+    draw_line(data, player_x, player_y, 0x0000FF00, 0);
+
+    // Put image to window
     mlx_put_image_to_window(data->mlx, data->win, data->img, 0, 0);
     return (0);
 }
+
 
 int game_loop(t_data *data)
 {
@@ -277,10 +385,10 @@ int main(void)
 
     data.width = 15;
     data.height = 10;
-    data.player.block_size = 50 ;
+    data.player.block_size = 50 * mini_map;
     data.player.x = data.width / 2;
     data.player.y = data.height / 2;
-    data.player.radius = 3;
+    data.player.radius = 3 * mini_map;
     data.player.turn_dir = 0;
     data.player.walk_dir = 0;
     data.player.rotation_angle = PI / 2;
@@ -294,7 +402,7 @@ int main(void)
         return (1);
 
     // Create window
-    data.win = mlx_new_window(data.mlx, data.width * 50, data.height * 50,
+    data.win = mlx_new_window(data.mlx, data.width * 50, data.height * 50 * 2,
                               "My Game");
     if (!data.win)
     {
