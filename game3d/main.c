@@ -14,9 +14,15 @@ void my_mlx_pixel_put(t_data *data, int x, int y, int color)
 {
     char *dst;
 
-    dst = data->addr + (y * data->line_length + x * (data->bits_per_pixel / 8));
-    if(dst == NULL)
+    // Add bounds checking
+    if (x < 0 || x >= data->width * data->player.block_size ||
+        y < 0 || y >= data->height * data->player.block_size)
         return;
+
+    if (!data->addr)
+        return;
+
+    dst = data->addr + (y * data->line_length + x * (data->bits_per_pixel / 8));
     *(unsigned int *)dst = color;
 }
 
@@ -41,7 +47,7 @@ int is_position_invalid(t_data *data, float x, float y)
         return 1; // Outside of the map
 
     // Check if position is a wall
-   // printf("x = %d and y = %d and my char in the mao is %c\n", grid_x, grid_y, data->map[grid_y][grid_x]);
+    // printf("x = %d and y = %d and my char in the mao is %c\n", grid_x, grid_y, data->map[grid_y][grid_x]);
     if (data->map[grid_y][grid_x] == '1')
         return 1; // It's a wall
 
@@ -113,54 +119,158 @@ int key_release(int keycode, t_data *data)
 
     return (0);
 }
-void ft_draw_wall3d(t_data *data, double ray_length, float ray_angle, int ray_count)
+void ft_draw_wall3d(t_data *data)
 {
-    // Correct for fisheye effect
-    double corrected_length = ray_length * cos(ray_angle - data->player.rotation_angle);
-   // printf("corrected_length  = %2.f and ray_length  = %2.f and ray_angle %2.f and ray_count = %2.f\n", corrected_length,ray_length; )
-    // Calculate wall height (using full screen height)
-    int wall_height = (int)((data->height * data->player.block_size) / corrected_length);
-    
-    // Calculate drawing start and end positions
-    int draw_start = -wall_height / 2 + (data->height * data->player.block_size) / 2;
-    if (draw_start < 0) draw_start = 0;
-    
-    int draw_end = wall_height / 2 + (data->height * data->player.block_size) / 2;
-    if (draw_end >= data->height * data->player.block_size) 
-        draw_end = data->height * data->player.block_size - 1;
+    int screen_height = data->height * data->player.block_size;
+    int screen_width = data->width * data->player.block_size;
 
-    // Calculate x position for wall strip (using full window width)
-    int x = (data->width * data->player.block_size / 2)  + ray_count;
-
-    // Draw ceiling
-    for (int y = 0; y < draw_start; y++)
+    for (int x = 0; x < screen_width; x++)
     {
-        my_mlx_pixel_put(data, x, y, 0x0087CEEB); // Sky blue
-    }
+        // Calculate ray angle
+        double ray_angle = data->player.rotation_angle - (FOV / 2) * (PI / 180) +
+                           (x * FOV * (PI / 180)) / screen_width;
 
-    // Draw the wall strip
-    for (int y = draw_start; y < draw_end; y++)
-    {
-        // Add shading based on wall side
-        int wall_color = 0xFFFFFF;
-        my_mlx_pixel_put(data, x, y, wall_color);
-    }
+        // Normalize angle
+        if (ray_angle < 0)
+            ray_angle += 2 * PI;
+        if (ray_angle > 2 * PI)
+            ray_angle -= 2 * PI;
 
-    // Draw floor
-    for (int y = draw_end; y < data->height * data->player.block_size; y++)
-    {
-        my_mlx_pixel_put(data, x, y, 0x808080); // Gray
+        // Ray casting variables
+        double rayDirX = cos(ray_angle);
+        double rayDirY = sin(ray_angle);
+
+        int mapX = (int)data->player.x;
+        int mapY = (int)data->player.y;
+
+        double deltaDistX = fabs(1 / rayDirX);
+        double deltaDistY = fabs(1 / rayDirY);
+
+        int stepX;
+        int stepY;
+
+        double sideDistX;
+        double sideDistY;
+
+        if (rayDirX < 0)
+        {
+            stepX = -1;
+            sideDistX = (data->player.x - mapX) * deltaDistX;
+        }
+        else
+        {
+            stepX = 1;
+            sideDistX = (mapX + 1.0 - data->player.x) * deltaDistX;
+        }
+
+        // Calculate Y stepping and sideDist
+        if (rayDirY < 0)
+        {
+            stepY = -1;
+            sideDistY = (data->player.y - mapY) * deltaDistY;
+        }
+        else
+        {
+            stepY = 1;
+            sideDistY = (mapY + 1.0 - data->player.y) * deltaDistY;
+        }
+
+        // DDA algorithm
+        int hit = 0, side;
+        while (hit == 0)
+        {
+            if (sideDistX < sideDistY)
+            {
+                sideDistX += deltaDistX;
+                mapX += stepX;
+                side = 0;
+            }
+            else
+            {
+                sideDistY += deltaDistY;
+                mapY += stepY;
+                side = 1;
+            }
+
+            if (mapX < 0 || mapY < 0 || mapX >= data->width || mapY >= data->height)
+                break;
+            if (data->map[mapY][mapX] == '1')
+                hit = 1;
+        }
+
+        // Calculate wall height
+        double perpWallDist;
+        if (side == 0)
+            perpWallDist = (mapX - data->player.x + (1 - stepX) / 2) / rayDirX;
+        else
+            perpWallDist = (mapY - data->player.y + (1 - stepY) / 2) / rayDirY;
+
+        perpWallDist = perpWallDist * cos(ray_angle - data->player.rotation_angle);
+        double distance = (screen_width / 2.0) / tan((FOV * PI / 180.0) / 2.0);
+        // Calculate line height with proper scaling
+        int lineHeight = (int)((screen_height / perpWallDist) * distance / screen_width);
+        printf("my data is x = %d and  %2.f\n\n", x, perpWallDist);
+        if (perpWallDist <= 0.1)
+            continue;
+
+        // Calculate drawing bounds
+        int drawStart = screen_height / 2 - lineHeight / 2;
+        if (drawStart < 0)
+            drawStart = 0;
+        int drawEnd = lineHeight / 2 + screen_height / 2;
+        if (drawEnd >= screen_height)
+            drawEnd = screen_height - 1;
+
+        // Draw the walls
+        int color;
+        if (side == 1)
+            color = 0x00AA0000;
+        else
+            color = 0x00FF0000;
+        if (color == 0x00FF0000)
+        {
+            if(perpWallDist >= 1.0)
+                color -= 0x00220000;
+            if (perpWallDist >= 1.5)
+                color -= 0x00220000;
+            if (perpWallDist >= 2.0)
+                color -= 0x00220000;
+             if (perpWallDist >= 2.5)
+                 color -= 0x00220000;
+        }
+        else
+        {
+            if (perpWallDist >= 1.0)
+                color -= 0x00110000;
+            if (perpWallDist >= 1.5)
+                color -= 0x00110000;
+            if (perpWallDist >= 2.0)
+                color -= 0x00110000;
+            // if (perpWallDist >= 2.5)
+            //     color -= 0x00110000;
+        }
+
+        for (int y = drawStart; y < drawEnd; y++)
+            my_mlx_pixel_put(data, x, y, color);
+
+        // Draw ceiling
+        for (int y = 0; y < drawStart; y++)
+            my_mlx_pixel_put(data, x, y, 0x00666666); // Lighter grey ceiling
+
+        for (int y = drawEnd; y < screen_height; y++)
+            my_mlx_pixel_put(data, x, y, 0x00333333);
     }
 }
 void draw_line(t_data *data, int center_x, int center_y, int color, int flag)
 {
     float size = data->player.block_size * mini_map;
-    for (int i = -(FOV / 2) ;i <= (FOV / 2); i++)
+    int ray_index = 0;
+    int length;
+    for (double i = -(FOV / 2); i <= (FOV / 2); i += 0.08)
     {
-        // Calculate ray 
-         double ray_angle = data->player.rotation_angle + i * (PI / 180);
+        // Calculate ray
+        double ray_angle = data->player.rotation_angle + i * (PI / 180);
 
-        
         // Calculate ray direction
         double rayDirX = cos(ray_angle);
         double rayDirY = sin(ray_angle);
@@ -206,7 +316,6 @@ void draw_line(t_data *data, int center_x, int center_y, int color, int flag)
         // DDA algorithm
         int hit = 0;
         int side;
-        double length = 0;
 
         while (hit == 0)
         {
@@ -240,14 +349,13 @@ void draw_line(t_data *data, int center_x, int center_y, int color, int flag)
         // Draw the ray
         for (double j = 0; j <= length; j += 0.5)
         {
-            double x = center_x + j * rayDirX;
-            double y = center_y + j * rayDirY;
-            if(i == 0)
+            int x = (int)(center_x + j * rayDirX);
+            int y = (int)(center_y + j * rayDirY);
+            if (i == 0)
                 my_mlx_pixel_put(data, x, y, 0x0000FF);
             else
                 my_mlx_pixel_put(data, x, y, color);
         }
-        ft_draw_wall3d(data, length,ray_angle , i);
     }
 }
 void draw_circle(t_data *data, int center_x, int center_y, int radius, int color)
@@ -267,39 +375,35 @@ int render_frame(t_data *data)
 {
     int color;
 
-    //clear image
-    memset(data->addr, 0, data->line_length * data->height * data->player.block_size );
-
+    // clear image
+    memset(data->addr, 0, data->line_length * data->height * data->player.block_size);
+    // draw wall 3d
+    ft_draw_wall3d(data);
     for (int y = 0; y < data->height; y++)
     {
         for (int x = 0; x < data->width; x++)
         {
-                if (data->map[y][x] == '1')
-                    color = 0x00FF0000; // Red for walls
-                else
-                    color = 0x00000000; // Black for empty space
+            if (data->map[y][x] == '1')
+                color = 0x00FF0000; // Red for walls
+            else
+                color = 0x00000000; // Black for empty space
 
-                // Fill the block
-                for (int i = 0; i < data->player.block_size * mini_map; i++)
-                {
-                    for (int j = 0; j < data->player.block_size * mini_map; j++)
-                    {
-                        my_mlx_pixel_put(data, x * data->player.block_size *mini_map + j, y * data->player.block_size * mini_map + i, color);
-                    }
-                }
+            // Fill the block
             for (int i = 0; i < data->player.block_size * mini_map; i++)
             {
-                my_mlx_pixel_put(data, (x + 1) * data->player.block_size * mini_map - 1, y * data->player.block_size * mini_map + i, 0x00FFFFFF);
-                my_mlx_pixel_put(data, x * data->player.block_size * mini_map + i, (y + 1) * data->player.block_size * mini_map - 1, 0x00FFFFFF);
+                for (int j = 0; j < data->player.block_size * mini_map; j++)
+                {
+                    my_mlx_pixel_put(data, x * data->player.block_size * mini_map + j, y * data->player.block_size * mini_map + i, color);
+                }
             }
         }
     }
 
     // Draw player (assuming player coordinates are in map units, not pixels)
     int player_x = data->player.x * data->player.block_size * mini_map + data->player.block_size * mini_map / 2;
-    int player_y = data->player.y * data->player.block_size * mini_map+ data->player.block_size * mini_map / 2;
-    draw_circle(data, player_x, player_y, data->player.radius* mini_map, 0x0000FF00);
-    draw_line(data, player_x, player_y, 0x0000FF00,0);
+    int player_y = data->player.y * data->player.block_size * mini_map + data->player.block_size * mini_map / 2;
+    draw_circle(data, player_x, player_y, data->player.radius * mini_map, 0x0000FF00);
+    draw_line(data, player_x, player_y, 0x0000FF00, 0);
     mlx_put_image_to_window(data->mlx, data->win, data->img, 0, 0);
     return (0);
 }
@@ -320,7 +424,7 @@ int main(void)
 
     data.width = 15;
     data.height = 10;
-    data.player.block_size = 50 ;
+    data.player.block_size = 50;
     data.player.x = data.width / 2;
     data.player.y = data.height / 2;
     data.player.radius = 3;
@@ -339,6 +443,7 @@ int main(void)
     // Create window
     data.win = mlx_new_window(data.mlx, data.width * 50, data.height * 50,
                               "My Game");
+    // printf("%d\n", data.width * 50);
     if (!data.win)
     {
         mlx_destroy_display(data.mlx);

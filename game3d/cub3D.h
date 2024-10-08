@@ -8,7 +8,7 @@
 #include <math.h>
 #include <string.h>
 #define PI 3.1415926535
-#define FOV 120
+#define FOV 60
 
 typedef struct s_player
 {
