@@ -4,6 +4,9 @@
 void init_image(t_data *data)
 {
     int bpp, size_line, endian;
+    data->img_wall = mlx_xpm_file_to_image(data->mlx, "wall.xpm",&(data->player.block_size), &(data->player.block_size));
+    if (!data->img_wall)
+        return;
     data->img = mlx_new_image(data->mlx, data->width * data->player.block_size, data->height * data->player.block_size);
     data->addr = mlx_get_data_addr(data->img, &bpp, &size_line, &endian);
     
@@ -136,6 +139,33 @@ int key_release(int keycode, t_data *data)
 
     return (0);
 }
+
+int ft_get_color_xpm(t_data *data, int texX, int texY)
+{
+    int color = 0;
+    int bpp, size_line, endian;
+    char *addr_image;
+    char *dst;
+
+    // Ensure texX and texY are within the texture bounds
+    texX = texX % data->player.block_size;
+    texY = texY % data->player.block_size;
+    if (texX < 0 || texX >= data->player.block_size || texY < 0 || texY >= data->player.block_size)
+        return 0;
+
+    // Get the data address of the image
+    addr_image = mlx_get_data_addr(data->img_wall, &bpp, &size_line, &endian);
+    if (!addr_image)
+        return 0;
+
+    // Calculate the memory position of the pixel (texX, texY)
+    dst = addr_image + (texY * size_line + texX * (bpp / 8));
+
+    // Get the color value at the calculated position
+    color = *(unsigned int *)dst;
+
+    return color;
+}
 void ft_draw_wall3d(t_data *data)
 {
     int screen_height = data->height * data->player.block_size;
@@ -222,9 +252,6 @@ void ft_draw_wall3d(t_data *data)
         else
             perpWallDist = (mapY - data->player.y + (1 - stepY) / 2) / rayDirY;
 
-        // if (perpWallDist <= 0.5)
-        //     perpWallDist = 0.5;
-        // fprintf(stderr, "perpWallDist => %f\n", perpWallDist);
         perpWallDist = perpWallDist * cos(ray_angle - data->player.rotation_angle);
         double distance = (screen_width / 2.0) / tan((FOV * PI / 180.0) / 2.0);
         // Calculate line height with proper scaling
@@ -243,7 +270,7 @@ void ft_draw_wall3d(t_data *data)
         // Draw the walls
         int color;
         float number = perpWallDist * 50;
-        number /= 10;
+        number /= 25;
         // printf("my data is x = %d and  %2.f\n\n", x, number / 10 );
         if (side == 1)
             color = 0x00AA0000;
@@ -261,7 +288,12 @@ void ft_draw_wall3d(t_data *data)
         }
 
         for (int y = drawStart; y < drawEnd; y++)
-            my_mlx_pixel_put(data, x, y, color);
+        {
+            int col = ft_get_color_xpm(data, x, y);
+            for(int i = 0; i < number; i++)
+                col -= 0x00010000;
+            my_mlx_pixel_put(data, x, y, col);
+        }
 
         // Draw ceiling
         for (int y = 0; y < drawStart; y++)

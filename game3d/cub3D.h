@@ -30,7 +30,9 @@ typedef struct s_data
     void *mlx;
     void *win;
     void *img;
+    void *img_wall;
     char *addr;
+    void *addr_image;
     int update_needed;
     int bits_per_pixel;
     int line_length;
